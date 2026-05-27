@@ -4,6 +4,9 @@ import { authenticate, authorize } from "../middlewares/auth.js";
 
 const router = Router();
 
+// POST /auth/register — cadastro público (role padrão: attendant)
+router.post("/register", AuthController.register);
+
 // POST /auth/login
 router.post("/login", AuthController.login);
 

@@ -4,7 +4,50 @@ import { UserModel } from "../models/userModel.js";
 import { generateTokens, verifyRefreshToken } from "../middlewares/auth.js";
 import { createError } from "../middlewares/errorHandler.js";
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const SALT_ROUNDS = 10;
+
 export const AuthController = {
+  // Cadastro público — cria usuário com role padrão 'attendant'
+  async register(req, res, next) {
+    try {
+      const { name, email, password } = req.body;
+
+      if (!name || !email || !password) {
+        throw createError(400, "Nome, email e senha são obrigatórios.");
+      }
+
+      if (!EMAIL_REGEX.test(email)) {
+        throw createError(400, "Email inválido.");
+      }
+
+      if (password.length < 8) {
+        throw createError(400, "Senha deve ter no mínimo 8 caracteres.");
+      }
+
+      const existing = await UserModel.findByEmail(email);
+      if (existing) {
+        throw createError(409, "Email já cadastrado.");
+      }
+
+      const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
+      const user = await UserModel.create({ name, email, password_hash, role: "attendant" });
+
+      const { accessToken, refreshToken } = generateTokens(user);
+      const tokenHash = crypto.createHash("sha256").update(refreshToken).digest("hex");
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      await UserModel.saveRefreshToken(user.id, tokenHash, expiresAt);
+
+      res.status(201).json({
+        accessToken,
+        refreshToken,
+        user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async login(req, res, next) {
     try {
       const { email, password } = req.body;
@@ -107,7 +150,6 @@ export const AuthController = {
         throw createError(400, "Nome, email e senha são obrigatórios.");
       }
 
-      const SALT_ROUNDS = 10;
       const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
 
       const user = await UserModel.create({ name, email, password_hash, role, phone });
